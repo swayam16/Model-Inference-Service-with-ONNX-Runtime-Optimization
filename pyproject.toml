@@ -1,0 +1,18 @@
+[project]
+name = "onnx-inference-service"
+version = "1.0.0"
+description = "Transformer inference service with ONNX Runtime optimization, batching, caching and tracing."
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008", "B904", "B905", "UP007", "UP045"]

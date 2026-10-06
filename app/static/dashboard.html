@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inference Service Dashboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10);
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --baseline: #a9a79f;
+    --good: #0ca30c; --critical: #d03b3b; --wash: rgba(42,120,214,.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --baseline: #6b6a65;
+      --wash: rgba(57,135,229,.14);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end;
+    justify-content: space-between; margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0 0 4px; font-weight: 650; }
+  h2 { font-size: 14px; margin: 0; font-weight: 600; }
+  .sub { color: var(--ink-2); font-size: 13px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px;
+    font-size: 12px; color: var(--ink-2); background: var(--surface); }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--good); } .dot.bad { background: var(--critical); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: var(--surface); color: var(--ink-2); padding: 5px 12px;
+    font: inherit; font-size: 13px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .tile .label { color: var(--ink-2); font-size: 13px; }
+  .tile .value { font-size: 28px; font-weight: 650; margin-top: 4px; letter-spacing: -.01em; }
+  .tile .value small { font-size: 14px; font-weight: 500; color: var(--ink-2); margin-left: 3px; }
+  .tile .note { color: var(--muted); font-size: 12px; margin-top: 2px; min-height: 17px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; margin-top: 12px; }
+  .chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 5px; border-radius: 1px; }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: 190px; }
+  .chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 9px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12);
+    white-space: nowrap; display: none; z-index: 2; }
+  .tip b { font-weight: 600; } .tip .k { color: var(--ink-2); }
+  .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+  .bars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 10px 12px; align-items: center; margin-top: 12px; }
+  .bars .name { font-size: 13px; color: var(--ink-2); }
+  .bars .track { height: 18px; }
+  .bars .bar { height: 100%; border-radius: 0 4px 4px 0; background: var(--series-1); min-width: 2px; }
+  .bars .bar.base { background: var(--baseline); }
+  .bars .val { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .bars .val span { color: var(--ink-2); margin-left: 6px; }
+  .try { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .try input { flex: 1 1 220px; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--page); color: var(--ink); font: inherit; }
+  button.act { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--ink);
+    color: var(--surface); font: inherit; font-weight: 550; cursor: pointer; }
+  button.act.ghost { background: var(--surface); color: var(--ink); }
+  button.act:disabled { opacity: .5; cursor: default; }
+  .result { margin-top: 12px; font-size: 13px; color: var(--ink-2); min-height: 40px; }
+  .result strong { color: var(--ink); font-size: 16px; }
+  .scroll { overflow-x: auto; margin-top: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { color: var(--ink-2); font-weight: 550; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); }
+  .pill { display: inline-block; padding: 0 7px; border-radius: 999px; border: 1px solid var(--border); font-size: 11.5px; }
+  .pill.err { border-color: var(--critical); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 20px; }
+  footer a, .sub a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Inference Service</h1>
+      <div class="sub">Transformer text classification on ONNX Runtime with dynamic batching, caching and tracing</div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <span class="status"><span class="dot" id="dot"></span><span id="status">Connecting</span></span>
+      <div class="seg" role="group" aria-label="Headline window">
+        <button data-window="60" aria-pressed="true">Last 1 min</button>
+        <button data-window="300" aria-pressed="false">Last 5 min</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="tiles" aria-label="Headline metrics">
+    <div class="card tile"><div class="label">p95 latency</div><div class="value" id="t-p95">–</div><div class="note" id="n-p95"></div></div>
+    <div class="card tile"><div class="label">p50 latency</div><div class="value" id="t-p50">–</div><div class="note" id="n-p50"></div></div>
+    <div class="card tile"><div class="label">Throughput</div><div class="value" id="t-rps">–</div><div class="note" id="n-rps"></div></div>
+    <div class="card tile"><div class="label">Error rate</div><div class="value" id="t-err">–</div><div class="note" id="n-err"></div></div>
+    <div class="card tile"><div class="label">Cache hit rate</div><div class="value" id="t-cache">–</div><div class="note" id="n-cache"></div></div>
+    <div class="card tile"><div class="label">Average batch size</div><div class="value" id="t-batch">–</div><div class="note" id="n-batch"></div></div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <div class="chart-head"><h2>Request latency (ms)</h2>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>p50</span><span><i style="background:var(--series-2)"></i>p95</span></div></div>
+      <div class="chart" id="c-latency"></div>
+    </div>
+    <div class="card">
+      <div class="chart-head"><h2>Throughput (requests per second)</h2></div>
+      <div class="chart" id="c-rps"></div>
+    </div>
+    <div class="card">
+      <div class="chart-head"><h2>Error rate (% of requests, 5xx)</h2></div>
+      <div class="chart" id="c-err"></div>
+    </div>
+    <div class="card">
+      <div class="chart-head"><h2>Cache hit rate (% of texts)</h2></div>
+      <div class="chart" id="c-cache"></div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Baseline comparison: p95 latency by runtime</h2>
+      <div class="sub" id="bench-sub">Offline benchmark, single request at a time.</div>
+      <div id="bench"><div class="empty">No benchmark recorded yet. Run <code>python -m scripts.benchmark</code>.</div></div>
+    </div>
+    <div class="card">
+      <h2>Try it</h2>
+      <div class="sub">Send one request, or a burst of 300 to watch batching and caching on the charts.</div>
+      <form class="try" id="try">
+        <input id="text" value="The acting was superb and the story kept me hooked." aria-label="Text to classify" maxlength="2000">
+        <button class="act" type="submit">Predict</button>
+        <button class="act ghost" type="button" id="burst">Send burst</button>
+      </form>
+      <div class="result" id="result"></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:12px">
+    <h2>Recent request traces</h2>
+    <div class="sub">Time spent per stage, in milliseconds. The same breakdown is returned in each response's <code>Server-Timing</code> header.</div>
+    <div class="scroll"><table>
+      <thead><tr><th>Time</th><th>Request ID</th><th>Status</th><th>Total</th><th>Cache</th><th>Queue</th><th>Tokenize</th><th>Inference</th><th>Batch</th><th>Result</th></tr></thead>
+      <tbody id="traces"><tr><td colspan="10" class="empty" style="text-align:left">No requests yet.</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <footer>API docs at <a href="docs">/docs</a> · Prometheus metrics at <a href="metrics">/metrics</a> · Dashboard refreshes every 2 seconds.</footer>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+let windowS = 60;
+
+const fmtMs = (v) => v == null ? "–" : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+const fmtPct = (v) => v == null ? "–" : (v * 100).toFixed(v > 0 && v < 0.1 ? 2 : 1);
+const fmtNum = (v) => v == null ? "–" : v >= 100 ? v.toFixed(0) : v.toFixed(1);
+const fmtTime = (t) => new Date(t * 1000).toLocaleTimeString([], { hour12: false });
+const tile = (id, value, unit) => { $(id).innerHTML = ""; $(id).append(value); if (unit && value !== "–") { const s = document.createElement("small"); s.textContent = unit; $(id).append(s); } };
+
+function niceMax(v) {
+  if (!(v > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (v <= m * p) return m * p;
+  return 10 * p;
+}
+
+function el(name, attrs, parent) {
+  const n = document.createElementNS(NS, name);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.append(n);
+  return n;
+}
+
+// Line chart with gaps for empty intervals, hairline grid, crosshair and tooltip.
+function lineChart(host, times, series, opts) {
+  const W = host.clientWidth || 480, H = 190, m = { l: 40, r: 12, t: 10, b: 22 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b, n = times.length;
+  const all = series.flatMap((s) => s.values).filter((v) => v != null);
+  const yMax = opts.max || niceMax(Math.max(0, ...all));
+  const x = (i) => m.l + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
+  const y = (v) => m.t + ph - (v / yMax) * ph;
+
+  host.querySelector("svg")?.remove();
+  const step = yMax / 4, dec = Number.isInteger(step) ? 0 : Number.isInteger(step * 10) ? 1 : 2;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.label });
+  for (let i = 0; i <= 4; i++) {
+    const v = (yMax / 4) * i, yy = y(v);
+    el("line", { x1: m.l, x2: W - m.r, y1: yy, y2: yy, stroke: i ? "var(--grid)" : "var(--axis)", "stroke-width": 1 }, svg);
+    el("text", { x: m.l - 6, y: yy + 4, "text-anchor": "end" }, svg).textContent = v.toFixed(dec);
+  }
+  [0, Math.floor((n - 1) / 2), n - 1].forEach((i, k) => {
+    el("text", { x: x(i), y: H - 5, "text-anchor": ["start", "middle", "end"][k] }, svg).textContent = fmtTime(times[i]);
+  });
+
+  for (const s of series) {
+    let d = "", pen = false, lastIdx = -1;
+    s.values.forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+      pen = true; lastIdx = i;
+    });
+    if (opts.area && d) {
+      let a = "", open = false, start = 0;
+      s.values.forEach((v, i) => {
+        if (v == null) { if (open) { a += `L${x(i - 1).toFixed(1)},${y(0)}L${x(start).toFixed(1)},${y(0)}Z`; open = false; } return; }
+        if (!open) { start = i; a += `M${x(i).toFixed(1)},${y(v).toFixed(1)}`; open = true; } else a += `L${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+      });
+      if (open) a += `L${x(n - 1).toFixed(1)},${y(0)}L${x(start).toFixed(1)},${y(0)}Z`;
+      el("path", { d: a, fill: "var(--wash)" }, svg);
+    }
+    el("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    // Isolated points have no line segment, so draw them as dots.
+    s.values.forEach((v, i) => {
+      if (v != null && s.values[i - 1] == null && s.values[i + 1] == null)
+        el("circle", { cx: x(i), cy: y(v), r: 2.5, fill: s.color }, svg);
+    });
+    if (lastIdx >= 0) el("circle", { cx: x(lastIdx), cy: y(s.values[lastIdx]), r: 4, fill: s.color, stroke: "var(--surface)", "stroke-width": 2 }, svg);
+  }
+
+  const cross = el("line", { y1: m.t, y2: m.t + ph, stroke: "var(--axis)", "stroke-width": 1, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" }, svg);
+  host.append(svg);
+
+  let tip = host.querySelector(".tip");
+  if (!tip) { tip = document.createElement("div"); tip.className = "tip"; host.append(tip); }
+  const show = (clientX) => {
+    const r = svg.getBoundingClientRect();
+    const px = ((clientX - r.left) / r.width) * W;
+    const i = Math.max(0, Math.min(n - 1, Math.round(((px - m.l) / pw) * (n - 1))));
+    host.dataset.hover = i;
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    tip.innerHTML = "";
+    const head = document.createElement("div"); head.className = "k"; head.textContent = fmtTime(times[i]); tip.append(head);
+    for (const s of series) {
+      const row = document.createElement("div");
+      const dot = document.createElement("i"); dot.style.background = s.color;
+      const b = document.createElement("b"); b.textContent = s.values[i] == null ? "no data" : opts.value(s.values[i]);
+      row.append(dot, b, document.createTextNode(series.length > 1 ? " " + s.name : ""));
+      tip.append(row);
+    }
+    tip.style.display = "block";
+    const left = (x(i) / W) * r.width;
+    tip.style.left = (left + 12 + tip.offsetWidth > r.width ? left - tip.offsetWidth - 12 : left + 12) + "px";
+    tip.style.top = "8px";
+  };
+  hit.addEventListener("pointermove", (e) => show(e.clientX));
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; delete host.dataset.hover; });
+}
+
+function renderCharts(d) {
+  const t = d.series.map((p) => p.t);
+  const pct = (k) => d.series.map((p) => (p[k] == null ? null : p[k] * 100));
+  lineChart($("c-latency"), t, [
+    { name: "p50", color: "var(--series-1)", values: d.series.map((p) => p.p50) },
+    { name: "p95", color: "var(--series-2)", values: d.series.map((p) => p.p95) },
+  ], { label: "Request latency over time",  value: (v) => fmtMs(v) + " ms" });
+  lineChart($("c-rps"), t, [{ name: "rps", color: "var(--series-1)", values: d.series.map((p) => p.rps) }],
+    { label: "Throughput over time", area: true,  value: (v) => fmtNum(v) + " req/s" });
+  lineChart($("c-err"), t, [{ name: "errors", color: "var(--series-1)", values: pct("error_rate") }],
+    { label: "Error rate over time",  value: (v) => v.toFixed(2) + "%", max: Math.max(1, niceMax(Math.max(0, ...pct("error_rate").filter((v) => v != null)))) });
+  lineChart($("c-cache"), t, [{ name: "cache", color: "var(--series-1)", values: pct("cache_hit_rate") }],
+    { label: "Cache hit rate over time",  value: (v) => v.toFixed(1) + "%", max: 100 });
+}
+
+function renderTiles(d) {
+  const L = d.latency_ms, span = d.window_s >= 120 ? `last ${d.window_s / 60} min` : "last 1 min";
+  tile("t-p95", fmtMs(L.p95), "ms"); $("n-p95").textContent = L.p99 == null ? "No requests in window" : `p99 ${fmtMs(L.p99)} ms`;
+  tile("t-p50", fmtMs(L.p50), "ms"); $("n-p50").textContent = d.inference_ms.p50 == null ? "" : `model call ${fmtMs(d.inference_ms.p50)} ms`;
+  tile("t-rps", fmtNum(d.throughput_rps), "req/s"); $("n-rps").textContent = `${d.requests.toLocaleString()} requests, ${span}`;
+  tile("t-err", fmtPct(d.error_rate), "%"); $("n-err").textContent = `${d.totals.errors.toLocaleString()} errors since start`;
+  tile("t-cache", fmtPct(d.cache_hit_rate), "%"); $("n-cache").textContent = `${d.cache.size.toLocaleString()} entries cached`;
+  tile("t-batch", d.avg_batch_size == null ? "–" : d.avg_batch_size.toFixed(1), "texts"); $("n-batch").textContent = `queue depth ${d.queue_depth}`;
+}
+
+function renderTraces(rows) {
+  const body = $("traces");
+  if (!rows.length) return;
+  body.innerHTML = "";
+  for (const r of rows) {
+    const tr = document.createElement("tr"), s = r.spans_ms || {};
+    const cell = (text, cls) => { const td = document.createElement("td"); if (cls) td.className = cls; td.textContent = text; tr.append(td); return td; };
+    const ms = (v) => (v == null ? "–" : fmtMs(v));
+    cell(fmtTime(r.ts)); cell(r.request_id, "mono");
+    const st = cell(""); const pill = document.createElement("span"); pill.className = "pill" + (r.status >= 500 ? " err" : ""); pill.textContent = r.status; st.append(pill);
+    cell(ms(r.total_ms)); cell(ms(s.cache)); cell(ms(s.queue)); cell(ms(s.tokenize)); cell(ms(s.inference));
+    cell(r.batch_size ?? "–");
+    cell(r.status >= 400 ? (r.error || "rejected") : r.items > 1 ? `${r.items} texts, ${r.cache_hits} cached` : r.cache_hits ? `${r.label} (cached)` : r.label || "–");
+    body.append(tr);
+  }
+}
+
+function renderBench(b) {
+  const rows = b.results.filter((r) => r.batch_size === b.summary.batch_size);
+  const max = Math.max(...rows.map((r) => r.p95_ms)), base = b.summary.baseline_p95_ms;
+  const names = { pytorch: "PyTorch (baseline)", onnx: "ONNX Runtime FP32", "onnx-int8": "ONNX Runtime INT8" };
+  const wrap = document.createElement("div"); wrap.className = "bars";
+  for (const r of rows) {
+    const name = document.createElement("div"); name.className = "name"; name.textContent = names[r.engine] || r.engine;
+    const track = document.createElement("div"); track.className = "track";
+    const bar = document.createElement("div"); bar.className = "bar" + (r.engine === "pytorch" ? " base" : ""); bar.style.width = (r.p95_ms / max) * 100 + "%";
+    bar.title = `p50 ${fmtMs(r.p50_ms)} ms, p95 ${fmtMs(r.p95_ms)} ms, p99 ${fmtMs(r.p99_ms)} ms, ${r.throughput_items_s} texts/s`;
+    track.append(bar);
+    const val = document.createElement("div"); val.className = "val"; val.textContent = fmtMs(r.p95_ms) + " ms";
+    if (r.engine !== "pytorch") { const s = document.createElement("span"); const c = (r.p95_ms / base - 1) * 100; s.textContent = (c > 0 ? "+" : "") + c.toFixed(0) + "%"; val.append(s); }
+    wrap.append(name, track, val);
+  }
+  $("bench").innerHTML = ""; $("bench").append(wrap);
+  $("bench-sub").textContent = `Offline benchmark of ${b.model_id}, batch size ${b.summary.batch_size}, ${b.config.requests} requests, ${b.environment.threads} threads on ${b.environment.cpu}.`;
+}
+
+async function getJSON(path) { const r = await fetch(path); if (!r.ok) throw new Error(r.status); return r.json(); }
+
+let last = null;
+async function refresh() {
+  try {
+    const [summary, traces] = await Promise.all([getJSON(`metrics/summary?window=${windowS}&step=5`), getJSON("traces?limit=12")]);
+    last = summary;
+    renderTiles(summary);
+    if (!document.querySelector(".chart[data-hover]")) renderCharts(summary);
+    renderTraces(traces);
+    $("dot").className = "dot ok"; $("status").textContent = "Live";
+  } catch (e) {
+    $("dot").className = "dot bad"; $("status").textContent = "Service unreachable";
+  }
+}
+
+async function init() {
+  try {
+    const info = await getJSON("info");
+    const chips = [`model: ${info.model}`, `engine: ${info.engine}`, `batch ≤ ${info.batching.max_batch_size}, wait ≤ ${info.batching.max_wait_ms} ms`, `cache TTL ${info.cache.ttl_s}s`];
+    $("chips").innerHTML = "";
+    for (const c of chips) { const s = document.createElement("span"); s.className = "chip"; s.textContent = c; $("chips").append(s); }
+  } catch (e) {}
+  try { renderBench(await getJSON("benchmark")); } catch (e) {}
+  refresh(); setInterval(refresh, 2000);
+}
+
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  windowS = +b.dataset.window;
+  document.querySelectorAll(".seg button").forEach((o) => o.setAttribute("aria-pressed", o === b));
+  refresh();
+}));
+window.addEventListener("resize", () => last && renderCharts(last));
+
+async function predict(text) {
+  const r = await fetch("predict", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+  return { ok: r.ok, status: r.status, timing: r.headers.get("Server-Timing"), body: await r.json() };
+}
+
+$("try").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const out = $("result"); out.textContent = "Scoring…";
+  try {
+    const r = await predict($("text").value);
+    out.innerHTML = "";
+    if (!r.ok) { out.textContent = `Request failed (${r.status}): ${r.body.detail || ""}`; return; }
+    const s = document.createElement("strong"); s.textContent = `${r.body.label} ${(r.body.score * 100).toFixed(1)}%`;
+    out.append(s, document.createElement("br"), document.createTextNode(`${fmtMs(r.body.latency_ms)} ms${r.body.cached ? ", served from cache" : ""} · request ${r.body.request_id}`),
+      document.createElement("br"), document.createTextNode(r.timing || ""));
+  } catch (err) { out.textContent = "Request failed: " + err.message; }
+  refresh();
+});
+
+const PHRASES = ["Great film.", "Not worth the ticket price.", "The acting was superb and the story kept me hooked until the very end.",
+  "Broke on the first use.", "Fast shipping, solid build quality, and it works exactly as described.", "Overhyped and underwhelming.",
+  "The plot made no sense and the ending felt rushed.", "Best purchase I have made all year.", "It was fine. Nothing special, nothing awful.",
+  "Customer service went out of their way to fix the problem."];
+
+$("burst").addEventListener("click", async () => {
+  const btn = $("burst"), total = 300, workers = 16; let sent = 0, done = 0, failed = 0;
+  btn.disabled = true;
+  const run = async () => {
+    while (sent < total) {
+      const i = sent++, base = PHRASES[i % PHRASES.length];
+      // About a third repeat exactly (cache hits); the rest are unique and reach the model.
+      const text = i % 3 === 0 ? base : `${base} (${Date.now()}-${i})`;
+      try { const r = await predict(text); if (!r.ok) failed++; } catch (e) { failed++; }
+      done++; btn.textContent = `Sending ${done}/${total}`;
+    }
+  };
+  await Promise.all(Array.from({ length: workers }, run));
+  btn.disabled = false; btn.textContent = "Send burst";
+  $("result").textContent = `Burst finished: ${total - failed} succeeded, ${failed} failed.`;
+  refresh();
+});
+
+init();
+</script>
+</body>
+</html>

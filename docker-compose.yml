@@ -1,0 +1,10 @@
+services:
+  inference:
+    build: .
+    ports:
+      - "8000:7860"
+    environment:
+      MAX_BATCH_SIZE: "16"
+      MAX_BATCH_WAIT_MS: "5"
+      CACHE_TTL_S: "600"
+    restart: unless-stopped

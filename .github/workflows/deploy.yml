@@ -1,0 +1,36 @@
+name: Deploy to Hugging Face Spaces
+
+# Pushes the files the Space needs to build the Docker image.
+# One-time setup (see README): create a Docker Space, then add
+#   - repository secret   HF_TOKEN  (a Hugging Face token with write access)
+#   - repository variable HF_SPACE  (for example: your-username/onnx-inference-service)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_SPACE: ${{ vars.HF_SPACE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push to the Space
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE" ]; then
+            echo "HF_TOKEN or HF_SPACE is not set; skipping deploy."
+            exit 0
+          fi
+          mkdir space
+          cp -r Dockerfile .dockerignore requirements.txt requirements-dev.txt app scripts space/
+          sed "s|GITHUB_REPOSITORY|${GITHUB_REPOSITORY}|g" deploy/space-readme.md > space/README.md
+          cd space
+          git init -q -b main
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add .
+          git commit -q -m "Deploy ${GITHUB_SHA::7}"
+          git push --force "https://${HF_SPACE%%/*}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" main

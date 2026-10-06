@@ -1,0 +1,6 @@
+# Runtime only: this is everything the serving image needs (no PyTorch).
+fastapi>=0.115
+uvicorn[standard]>=0.30
+onnxruntime>=1.20
+tokenizers>=0.20
+numpy>=1.26
